@@ -27,6 +27,10 @@ parser.add_argument('--cuda', default=True, type=bool,
                     help='Use cuda to train model')
 parser.add_argument('--cpu', default=False, type=bool,
                     help='Use cpu nms')
+parser.add_argument('--output_onnx', default='./onnx/RFSong-799.onnx', type=str,
+                    help='output_onnx')
+parser.add_argument('--net_len', default=300, type=int,
+                    help='net_len')
 args = parser.parse_args()
 
 
@@ -122,24 +126,13 @@ if __name__ == '__main__':
         cudnn.benchmark = True
     else:
         net = net.cpu()
+    output_onnx = args.output_onnx
+    device = torch.device("cpu")
+    net = net.to(device)
+    print("==> Exporting model to ONNX format at '{}'".format(output_onnx))
+    input_names = ["input"]
+    output_names = []
+    inputs = torch.randn(1, 3, args.net_len, args.net_len).to(device)
 
-    detector = Detect(num_classes,0,cfg)
-
-    transform = BaseTransform(img_dim, rgb_means, (2, 0, 1))
-    object_detector = ObjectDetector(net, detector, transform)
-
-    img_list = os.listdir(args.img_dir)
-    for i, img in enumerate(img_list):
-        img_name = img
-        img = os.path.join(args.img_dir, img)
-        image = cv2.imread(img)
-        detect_bboxes, tim = object_detector.predict(image)
-
-        for class_id,class_collection in enumerate(detect_bboxes):
-            if len(class_collection)>0:
-                for i in range(class_collection.shape[0]):
-                    if class_collection[i,-1]>0.6:
-                        pt = class_collection[i]
-                        cv2.rectangle(image, (int(pt[0]), int(pt[1])), (int(pt[2]), int(pt[3])), (0, 255, 0), 2)
-
-        cv2.imwrite('./images_out/' + img_name, image)
+    torch_out = torch.onnx._export(net, inputs, output_onnx, opset_version=9, export_params=True, verbose=False,
+                                   input_names=input_names, output_names=output_names)
